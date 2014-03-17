@@ -6,8 +6,10 @@ META.yml
 Makefile.PL
 README
 README.md
+anagrams.pl
 dist.ini
 lib/Lingua/Anagrams.pm
+scowl-7.1.tar.gz
 t/00-compile.t
 t/000-report-versions-tiny.t
 t/basic.t

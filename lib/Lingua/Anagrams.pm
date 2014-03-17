@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.001';
+$Lingua::Anagrams::VERSION = '0.002';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -11,7 +11,7 @@ our $LIMIT = 20;
 
 # some global variables to be localized
 # used to limit time spent copying values
-our ( $limit, $known, $trie, $cache, $lower, $cleaner, $jumps );
+our ( $limit, $known, $trie, $cache, $lower, $cleaner, $jumps, $word_cache );
 
 
 sub new {
@@ -93,13 +93,10 @@ sub _words_in {
                     }
                 }
                 else {       # terminal
-                    push @words,
-                      [
-                        join( '',
-                            reverse map { chr( $_->[0] ) }
-                              @stack[ 1 .. $#stack ] ),
-                        [@$counts]
-                      ];
+                    my $w = join '',
+                      reverse map { chr( $_->[0] ) } @stack[ 1 .. $#stack ];
+                    $w = $word_cache->{$w} //= scalar keys %$word_cache;
+                    push @words, [ $w, [@$counts] ];
                     if ($total) {
                         $stack[0][0] = $jumps->[$c];
                     }
@@ -130,9 +127,16 @@ sub anagrams {
     return () unless _all_known($counts);
     local $jumps = _jumps($counts);
     my $lowest = $jumps->[0];
-    local $lower = $lowest - 1;
-    local $cache = {};
-    return _anagramize($counts);
+    local $lower      = $lowest - 1;
+    local $cache      = {};
+    local $word_cache = {};
+    my @anagrams = _anagramize($counts);
+    return () unless @anagrams;
+    my %r = reverse %$word_cache;
+    @anagrams = map {
+        [ sort map { $r{$_} } @$_ ]
+    } @anagrams;
+    return @anagrams;
 }
 
 sub _jumps {
@@ -208,7 +212,11 @@ sub _anagramize {
         }
     }
     my %seen;
-    @anagrams = map { $seen{ join ' ', sort @$_ }++ ? () : $_ } @anagrams;
+    @anagrams = map {
+        $seen{ join ' ', sort { $a <=> $b } @$_ }++
+          ? ()
+          : $_
+    } @anagrams;
     $cache->{$key} = \@anagrams if $key;
     @anagrams;
 }
@@ -227,7 +235,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.001
+version 0.002
 
 =head1 SYNOPSIS
 
