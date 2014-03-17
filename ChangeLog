@@ -1,5 +1,9 @@
 Revision history for TPath
 
+0.003     2014-03-17 10:03:44-04:00 America/New_York
+  * Some micro-optimizations and simplifications of little functional impart.
+    The cache might use a bit less memory now as the keys are shorter.
+
 0.002     2014-03-16 20:43:25-04:00 America/New_York
   * convert words to integers (further) to improve memory use
 

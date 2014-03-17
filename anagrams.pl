@@ -6,14 +6,17 @@ use warnings;
 
 use Lingua::Anagrams;
 
-open my $fh, '<', 'wordsEn.txt' or die "Aargh! $!";
+say 'reading word list...';
+open my $fh, '<', 'words.txt' or die "Aargh! $!";
 my @words = <$fh>;
 close $fh;
 
-my $anagramizer = Lingua::Anagrams->new( \@words, limit => 30);
+say 'processing word list...';
+my $anagramizer = Lingua::Anagrams->new( \@words );
 
+say 'starting...';
 my $t1       = time;
-my @anagrams = $anagramizer->anagrams('david fairchild houghton');
+my @anagrams = $anagramizer->anagrams('isaac');
 my $t2       = time;
 
 say join ' ', @$_ for @anagrams;
