@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.005';
+$Lingua::Anagrams::VERSION = '0.006';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -208,11 +208,10 @@ sub _any {
 sub _anagramize {
     my $counts = shift;
     my $total  = 0;
-    my @used =  @$counts[@indices];
-    $total += $_ for @used;
+    $total += $_ for @$counts[@indices];
     my $key;
     if ( $total <= $limit ) {
-        $key = join ',', @used;
+        $key = join ',', @$counts[@indices];
         my $cached = $cache{$key};
         return @$cached if $cached;
     }
@@ -250,7 +249,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.005
+version 0.006
 
 =head1 SYNOPSIS
 
