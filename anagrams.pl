@@ -16,7 +16,7 @@ my $anagramizer = Lingua::Anagrams->new( \@words );
 
 say 'starting...';
 my $t1       = time;
-my @anagrams = $anagramizer->anagrams('isaac');
+my @anagrams = $anagramizer->anagrams('pig farmer o');
 my $t2       = time;
 
 say join ' ', @$_ for @anagrams;
