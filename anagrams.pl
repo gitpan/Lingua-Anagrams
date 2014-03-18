@@ -12,11 +12,11 @@ my @words = <$fh>;
 close $fh;
 
 say 'processing word list...';
-my $anagramizer = Lingua::Anagrams->new( \@words );
+my $anagramizer = Lingua::Anagrams->new( \@words , limit => 30 );
 
 say 'starting...';
 my $t1       = time;
-my @anagrams = $anagramizer->anagrams('pig farmer o');
+my @anagrams = $anagramizer->anagrams('jude w melton houghton');
 my $t2       = time;
 
 say join ' ', @$_ for @anagrams;

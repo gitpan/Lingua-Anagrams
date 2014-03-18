@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.006';
+$Lingua::Anagrams::VERSION = '0.007';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -249,7 +249,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.006
+version 0.007
 
 =head1 SYNOPSIS
 
