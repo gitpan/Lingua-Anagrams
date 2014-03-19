@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.007';
+$Lingua::Anagrams::VERSION = '0.008';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -77,49 +77,51 @@ sub _words_in {
     my @words;
     my @stack = ( [ 0, $trie ] );
     while (1) {
-        my ( $c, $level ) = @{ $stack[0] };
+        my ( $c, $level ) = @{ $stack[-1] };
         if ( $c == -1 || $c >= @$level ) {
             last if @stack == 1;
-            shift @stack;
+            pop @stack;
             ++$total;
-            ++$counts->[ $stack[0][0] ];
-            $stack[0][0] = $jumps[ $stack[0][0] ];
+            $c = \( $stack[-1][0] );
+            ++$counts->[$$c];
+            $$c = $jumps[$$c];
         }
         else {
             my $l = $level->[$c];
             if ($l) {    # trie holds corresponding node
                 if ($c) {    # character
                     if ( $counts->[$c] ) {
-                        unshift @stack, [ 0, $l ];
+                        push @stack, [ 0, $l ];
                         --$counts->[$c];
                         --$total;
                     }
                     else {
-                        $stack[0][0] = $jumps[$c];
+                        $stack[-1][0] = $jumps[$c];
                     }
                 }
                 else {       # terminal
                     my $w = join '',
-                      reverse map { chr( $_->[0] ) } @stack[ 1 .. $#stack ];
+                      map { chr( $_->[0] ) } @stack[ 0 .. $#stack - 1 ];
                     $w = $word_cache{$w} //= scalar keys %word_cache;
                     push @words, [ $w, [@$counts] ];
                     if ($total) {
-                        $stack[0][0] = $jumps[$c];
+                        $stack[-1][0] = $jumps[$c];
                     }
                     else {
-                        shift @stack;
+                        pop @stack;
                         ++$total;
-                        ++$counts->[ $stack[0][0] ];
-                        $stack[0][0] = $jumps[ $stack[0][0] ];
+                        $c = \( $stack[-1][0] );
+                        ++$counts->[$$c];
+                        $$c = $jumps[$$c];
                     }
                 }
             }
             else {
-                $stack[0][0] = $jumps[$c];
+                $stack[-1][0] = $jumps[$c];
             }
         }
     }
-    @words;
+    \@words;
 }
 
 
@@ -216,23 +218,49 @@ sub _anagramize {
         return @$cached if $cached;
     }
     my @anagrams;
-    for ( _words_in( $counts, $total ) ) {
-        my ( $word, $c ) = @$_;
-        if ( _any($c) ) {
-            push @anagrams, [ $word, @$_ ] for _anagramize($c);
+    my $words = _words_in( $counts, $total );
+    if ( _all_touched( $counts, $words ) ) {
+        for (@$words) {
+            my ( $word, $c ) = @$_;
+            if ( _any($c) ) {
+                push @anagrams, [ $word, @$_ ] for _anagramize($c);
+            }
+            else {
+                push @anagrams, [$word];
+            }
         }
-        else {
-            push @anagrams, [$word];
-        }
+        my %seen;
+        @anagrams = map {
+            $seen{ join ' ', sort { $a <=> $b } @$_ }++
+              ? ()
+              : $_
+        } @anagrams;
     }
-    my %seen;
-    @anagrams = map {
-        $seen{ join ' ', sort { $a <=> $b } @$_ }++
-          ? ()
-          : $_
-    } @anagrams;
     $cache{$key} = \@anagrams if $key;
     @anagrams;
+}
+
+sub _all_touched {
+    my ( $counts, $words ) = @_;
+
+    my ( $first_index, $c );
+
+    # if any letter count didn't change, there's no hope
+  OUTER: for my $i (@indices) {
+        next unless $c = $counts->[$i];
+        $first_index //= $i;
+        for (@$words) {
+            next OUTER if $_->[1][$i] < $c;
+        }
+        return;
+    }
+
+    # we only need consider all the branches which affected a
+    # particular letter; we will find all possibilities in their
+    # ramifications
+    $c = $counts->[$first_index];
+    @$words = grep { $_->[1][$first_index] < $c } @$words;
+    return 1;
 }
 
 1;
@@ -249,7 +277,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.007
+version 0.008
 
 =head1 SYNOPSIS
 
@@ -328,6 +356,45 @@ Note that this function, like C<_clean>, must modify its argument directly.
 
 Returns a list of array references, each reference containing a list of
 words which together constitute an anagram of the phrase.
+
+=head1 SOME CLEVER BITS
+
+One trick I use to speed things up is to convert all characters to integers
+immediately. If you're using integers, you can treat arrays are really fast
+hashes.
+
+Another is, in the trie, to build the trie only of arrays. The character
+identity is encoded in the array position, the distance from the start by depth.
+So the trie contains nothing but arrays. For a little memory efficiency the
+terminal symbols is always the same empty array.
+
+The natural way to walk the trie is with recursion, but I use a stack and a loop
+to speed things up.
+
+I use a jump table to keep track of the actual characters under consideration so
+when walking the trie I only consider characters that might be in anagrams.
+
+A particular step of anagram generation consists of pulling out all words that
+can be formed with the current character counts. If a particular character count
+is not decremented in the formation of any word in a given step we know we've
+reached a dead end and we should give up.
+
+Similarly, if we B<do> touch every character in a particular step we can collect
+all the words extracted which touch that character and descend only into the
+remaining possibilities for those character counts because the other words one
+might exctract are necessarily contained in the remaining character counts.
+
+The dynamic programming bit consists of memoizing the anagram lists keyed to the
+character counts so we never extract the anagrams for a particular set of counts
+twice (of course, we have to calculate this key many times, which is not free).
+
+I localize a bunch of variables on the first method call so that thereafter
+these values can be treated as global. This saves a lot of copying.
+
+After the initial method calls I use functions, which saves a lot of lookup time.
+
+In stack operations I use push and pop in lieu of unshift and shift. The former
+are more efficient, especially with short arrays.
 
 =head1 AUTHOR
 
