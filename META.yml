@@ -8,7 +8,7 @@ build_requires:
   IPC::Open3: '0'
   Test::Exception: '0'
   Test::More: '0.88'
-  perl: '5.006'
+  perl: '5.010'
 configure_requires:
   ExtUtils::MakeMaker: '6.30'
 dynamic_config: 0
@@ -20,6 +20,7 @@ meta-spec:
 name: Lingua-Anagrams
 no_index: {}
 requires:
+  perl: '5.010'
   strict: '0'
   warnings: '0'
-version: '0.008'
+version: '0.009'

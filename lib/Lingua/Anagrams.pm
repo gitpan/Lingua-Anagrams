@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.008';
+$Lingua::Anagrams::VERSION = '0.009';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -21,10 +21,11 @@ sub new {
     my ( $trie, $known, $lowest ) = _trieify($words);
     die 'no words' unless $lowest;
     return bless {
-        limit => $params{limit} // $LIMIT,
-        clean => $cleaner,
-        trie  => $trie,
-        known => $known,
+        limit  => $params{limit}  // $LIMIT,
+        sorted => $params{sorted} // 0,
+        clean  => $cleaner,
+        trie   => $trie,
+        known  => $known,
     }, $class;
 }
 
@@ -126,7 +127,16 @@ sub _words_in {
 
 
 sub anagrams {
-    my ( $self, $phrase ) = @_;
+    my $self = shift;
+    my $phrase = shift;
+    my %opts;
+    if (@_ == 1) {
+        my $r = shift;
+        die 'options expected to be key value pairs or a hash ref' unless 'HASH' eq ref $r;
+        %opts = %$r;
+    } else {
+        %opts = @_;
+    }
     local ( $trie, $known, $limit, $cleaner ) =
       @$self{qw(trie known limit clean)};
     $cleaner->($phrase);
@@ -141,8 +151,27 @@ sub anagrams {
     return () unless @anagrams;
     my %r = reverse %word_cache;
     @anagrams = map {
-        [ sort map { $r{$_} } @$_ ]
+        [ map { $r{$_} } @$_ ]
     } @anagrams;
+    my $sort;
+
+    if ( exists $opts{sorted} ) {
+        $sort = $opts{sorted};
+    }
+    else {
+        $sort = $self->{sorted};
+    }
+    if ($sort) {
+        @anagrams = sort {
+            my $ordered = @$a <= @$b ? 1 : -1;
+            my ( $d, $e ) = $ordered == 1 ? ( $a, $b ) : ( $b, $a );
+            for ( 0 .. $#$d ) {
+                my $c = $d->[$_] cmp $e->[$_];
+                return $ordered * $c if $c;
+            }
+            -$ordered;
+        } map { [ sort @$_ ] } @anagrams;
+    }
     return @anagrams;
 }
 
@@ -277,7 +306,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.008
+version 0.009
 
 =head1 SYNOPSIS
 
@@ -350,12 +379,29 @@ and normalized. The default cleaning function is
 
 Note that this function, like C<_clean>, must modify its argument directly.
 
+=item sorted
+
+A boolean. If true, the anagram list will be returned sorted.
+
 =back
 
-=head2 $self->anagrams( $phrase )
+=head2 $self->anagrams( $phrase, %opts )
 
 Returns a list of array references, each reference containing a list of
 words which together constitute an anagram of the phrase.
+
+Options may be passed in as a list of key value pairs or as a hash reference.
+The following options are supported at this time:
+
+=over 4
+
+=item sorted
+
+As with the constructor option, this determines whether the anagrams are sorted
+internally and with respect to each other. It overrides the constructor parameter,
+which provides the default.
+
+=back
 
 =head1 SOME CLEVER BITS
 
