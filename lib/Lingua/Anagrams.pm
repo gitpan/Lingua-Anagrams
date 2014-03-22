@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.010';
+$Lingua::Anagrams::VERSION = '0.011';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -182,7 +182,6 @@ sub anagrams {
     local @indices = _indices($counts);
     my @anagrams;
     for my $pair (@$tries) {
-        print ".\n";
         local ( $trie, $known ) = @$pair;
         next unless _all_known($counts);
         local %cache      = ();
@@ -341,7 +340,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.010
+version 0.011
 
 =head1 SYNOPSIS
 
