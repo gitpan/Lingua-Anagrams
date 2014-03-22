@@ -21,6 +21,7 @@ my %WriteMakefileArgs = (
   "LICENSE" => "perl",
   "NAME" => "Lingua::Anagrams",
   "PREREQ_PM" => {
+    "List::MoreUtils" => 0,
     "strict" => 0,
     "warnings" => 0
   },
@@ -31,7 +32,7 @@ my %WriteMakefileArgs = (
     "Test::Exception" => 0,
     "Test::More" => "0.88"
   },
-  "VERSION" => "0.009",
+  "VERSION" => "0.010",
   "test" => {
     "TESTS" => "t/*.t"
   }
@@ -42,6 +43,7 @@ my %FallbackPrereqs = (
   "File::Spec" => 0,
   "IO::Handle" => 0,
   "IPC::Open3" => 0,
+  "List::MoreUtils" => 0,
   "Test::Exception" => 0,
   "Test::More" => "0.88",
   "strict" => 0,

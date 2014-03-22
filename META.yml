@@ -20,7 +20,8 @@ meta-spec:
 name: Lingua-Anagrams
 no_index: {}
 requires:
+  List::MoreUtils: '0'
   perl: '5.010'
   strict: '0'
   warnings: '0'
-version: '0.009'
+version: '0.010'

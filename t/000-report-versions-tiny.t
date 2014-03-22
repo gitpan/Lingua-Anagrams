@@ -52,6 +52,7 @@ eval { $v .= pmver('ExtUtils::MakeMaker','6.30') };
 eval { $v .= pmver('File::Spec','any version') };
 eval { $v .= pmver('IO::Handle','any version') };
 eval { $v .= pmver('IPC::Open3','any version') };
+eval { $v .= pmver('List::MoreUtils','any version') };
 eval { $v .= pmver('Test::Exception','any version') };
 eval { $v .= pmver('Test::More','0.88') };
 eval { $v .= pmver('strict','any version') };
