@@ -1,6 +1,11 @@
 Revision history for TPath
 
+0.012     2014-03-23 12:43:04-04:00 America/New_York
+  * fixed minimum anagram count bug: if the minimum could not be found, it would
+    fail to translate the word numbers back into words
+
 0.011     2014-03-22 17:55:10-04:00 America/New_York
+  * cleaned up some debugging code
 
 0.010     2014-03-22 17:52:55-04:00 America/New_York
   * allow cascading word lists

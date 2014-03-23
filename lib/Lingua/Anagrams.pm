@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.011';
+$Lingua::Anagrams::VERSION = '0.012';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -181,20 +181,21 @@ sub anagrams {
     local @jumps   = _jumps($counts);
     local @indices = _indices($counts);
     my @anagrams;
+    local %word_cache;
     for my $pair (@$tries) {
         local ( $trie, $known ) = @$pair;
         next unless _all_known($counts);
-        local %cache      = ();
-        local %word_cache = ();
-        @anagrams = _anagramize($counts);
+        local %cache = ();
+        %word_cache = ();
+        @anagrams   = _anagramize($counts);
         next unless @anagrams;
         next if $min and @anagrams < $min;
-        my %r = reverse %word_cache;
-        @anagrams = map {
-            [ map { $r{$_} } @$_ ]
-        } @anagrams;
         last;
     }
+    my %r = reverse %word_cache;
+    @anagrams = map {
+        [ map { $r{$_} } @$_ ]
+    } @anagrams;
     if ($sort) {
         @anagrams = sort {
             my $ordered = @$a <= @$b ? 1 : -1;
@@ -340,10 +341,11 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.011
+version 0.012
 
 =head1 SYNOPSIS
 
+  use v5.10;
   use Lingua::Anagrams;
   
   open my $fh, '<', 'words.txt' or die "Aargh! $!";         # some 100,000 words
@@ -366,10 +368,10 @@ version 0.011
     $anagramizer->anagrams( 'Ada Hyacinth Melton-Houghton', sorted => 1, min => 100 );
   my $t2 = time;
   
-  print join ' ', @$_ for @anagrams;
-  print "\n\n";
-  print scalar(@anagrams) . " anagrams\n";
-  print 'it took ' . ( $t2 - $t1 ) . " seconds\n";
+  say join ' ', @$_ for @anagrams;
+  say '';
+  say scalar(@anagrams) . ' anagrams';
+  say 'it took ' . ( $t2 - $t1 ) . ' seconds';
 
 Giving you
 
