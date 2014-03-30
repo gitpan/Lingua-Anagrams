@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.012';
+$Lingua::Anagrams::VERSION = '0.013';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -13,7 +13,7 @@ our $LIMIT = 20;
 
 # some global variables to be localized
 # used to limit time spent copying values
-our ( $limit, $known, $trie, %cache, $cleaner, @jumps, %word_cache, @indices );
+our ( $limit, $known, $trie, %cache, $cleaner, @jumps, $word_cache, @indices );
 
 
 sub new {
@@ -21,13 +21,7 @@ sub new {
     my $wl    = shift;
     die 'first parameter expected to be an array reference'
       unless ref $wl eq 'ARRAY';
-    my %params;
-    if ( @_ == 1 ) {
-        %params = %{ $_[0] };
-    }
-    else {
-        %params = @_;
-    }
+    my %params = _make_opts(@_);
     $class = ref $class || $class;
     local $cleaner = $params{clean} // \&_clean;
     my @word_lists;
@@ -124,7 +118,7 @@ sub _words_in {
                 else {       # terminal
                     my $w = join '',
                       map { chr( $_->[0] ) } @stack[ 0 .. $#stack - 1 ];
-                    $w = $word_cache{$w} //= scalar keys %word_cache;
+                    $w = $word_cache->{$w} //= scalar keys %$word_cache;
                     push @words, [ $w, [@$counts] ];
                     if ($total) {
                         $stack[-1][0] = $jumps[$c];
@@ -150,21 +144,13 @@ sub _words_in {
 sub anagrams {
     my $self   = shift;
     my $phrase = shift;
-    my %opts;
-    if ( @_ == 1 ) {
-        my $r = shift;
-        die 'options expected to be key value pairs or a hash ref'
-          unless 'HASH' eq ref $r;
-        %opts = %$r;
-    }
-    else {
-        %opts = @_;
-    }
-    my $tries = $self->{tries};
+    my %opts   = _make_opts(@_);
+    my $tries  = $self->{tries};
     local ( $limit, $cleaner ) = @$self{qw(limit clean)};
     $cleaner->($phrase);
     return () unless length $phrase;
     my ( $sort, $min );
+
     if ( exists $opts{sorted} ) {
         $sort = $opts{sorted};
     }
@@ -181,18 +167,18 @@ sub anagrams {
     local @jumps   = _jumps($counts);
     local @indices = _indices($counts);
     my @anagrams;
-    local %word_cache;
+    local $word_cache = {};
     for my $pair (@$tries) {
         local ( $trie, $known ) = @$pair;
         next unless _all_known($counts);
         local %cache = ();
-        %word_cache = ();
-        @anagrams   = _anagramize($counts);
+        %$word_cache = ();
+        @anagrams    = _anagramize($counts);
         next unless @anagrams;
         next if $min and @anagrams < $min;
         last;
     }
-    my %r = reverse %word_cache;
+    my %r = reverse %$word_cache;
     @anagrams = map {
         [ map { $r{$_} } @$_ ]
     } @anagrams;
@@ -208,6 +194,162 @@ sub anagrams {
         } map { [ sort @$_ ] } @anagrams;
     }
     return @anagrams;
+}
+
+sub _make_opts {
+    if ( @_ == 1 ) {
+        my $r = shift;
+        die 'options expected to be key value pairs or a hash ref'
+          unless 'HASH' eq ref $r;
+        return %$r;
+    }
+    else {
+        return @_;
+    }
+}
+
+
+sub iterator {
+    my $self   = shift;
+    my $phrase = shift;
+    my %opts   = _make_opts(@_);
+    $opts{sorted} //= $self->{sorted};
+    $self->{clean}->($phrase);
+    return sub { }
+      unless length $phrase;
+    return _super_iterator( $self->{tries}, $phrase, \%opts );
+}
+
+# iterator that converts word indices back to words
+sub _super_iterator {
+    my ( $tries, $phrase, $opts ) = @_;
+    my $counts = _counts($phrase);
+    my @j      = _jumps($counts);
+    my @ix     = _indices($counts);
+    my $wc     = {};
+    local @indices    = @ix;
+    local @jumps      = @j;
+    local $word_cache = $wc;
+    my $i = _iterator( $tries, $counts, $opts );
+    my ( %reverse_cache, %c );
+    return sub {
+        my $rv;
+        local @jumps      = @j;
+        local @indices    = @ix;
+        local $word_cache = $wc;
+        {
+            $rv = $i->();
+            return unless $rv;
+            my $key = join ',', sort { $a <=> $b } @$rv;
+            redo if $c{$key}++;
+        }
+        for my $j (@$rv) {
+            if ( !$reverse_cache{$j} ) {
+                %reverse_cache = reverse %$word_cache;
+                last;
+            }
+        }
+        $rv = [ map { $reverse_cache{$_} } @$rv ];
+        if ( $opts->{sorted} ) {
+            $rv = [ sort @$rv ];
+        }
+        $rv;
+    };
+}
+
+# iterator that manages the trie list
+sub _iterator {
+    my ( $tries, $counts, $opts ) = @_;
+    my $total = 0;
+    $total += $_ for @$counts[@indices];
+    my @t = @$tries;
+    my ( $i, $next, $initialized );
+    my $s = sub {
+        my $rv = $next;
+        undef $next;
+        return $rv if $initialized && !$rv;
+        $initialized //= 1;
+        {
+            unless ($i) {
+                if (@t) {
+                    my $pair = shift @t;
+                    local ( $trie, $known ) = @$pair;
+                    redo unless _all_known($counts);
+                    my $words = _words_in( $counts, $total );
+                    redo unless _worth_pursuing( $counts, $words );
+                    $i = _sub_iterator( $tries, $words, $opts );
+                }
+                else {
+                    return $rv;
+                }
+            }
+            $next = $i->();
+            unless ($next) {
+                undef $i;
+                redo;
+            }
+        }
+        $rv;
+    };
+    $s->();    # initialize
+    $s;
+}
+
+# iterator that actually walks tries looking for anagrams
+sub _sub_iterator {
+    my ( $tries, $words, $opts ) = @_;
+    my @pairs = @$words;
+    return sub {
+        {
+            return unless @pairs;
+            if ( $opts->{random} ) {
+                my $i = int rand scalar @pairs;
+                if ($i) {
+                    my $p = $pairs[0];
+                    $pairs[0] = $pairs[$i];
+                    $pairs[$i] = $p;
+                }
+            }
+            my ( $w, $s ) = @{ $pairs[0] };
+            unless ( ref $s eq 'CODE' ) {
+                if ( _any($s) ) {
+                    $s = _iterator( $tries, $s, $opts );
+                }
+                else {
+                    my $next = [];
+                    $s = sub {
+                        my $rv = $next;
+                        undef $next;
+                        $rv;
+                    };
+                }
+                $pairs[0][1] = $s;
+            }
+            my $remainder = $s->();
+            unless ($remainder) {
+                shift @pairs;
+                redo;
+            }
+            return [ $w, @$remainder ];
+        }
+    };
+}
+
+# all character counts decremented
+sub _worth_pursuing {
+    my ( $counts, $words ) = @_;
+
+    my $c;
+
+    # if any letter count didn't change, there's no hope
+  OUTER: for my $i (@indices) {
+        next unless $c = $counts->[$i];
+        for (@$words) {
+            next OUTER if $_->[1][$i] < $c;
+        }
+        return;
+    }
+    return 1;
 }
 
 sub _indices {
@@ -265,8 +407,8 @@ sub _counts {
 }
 
 sub _any {
-    for my $v ( @{ $_[0] } ) {
-        return 1 if $v;
+    for ( @{ $_[0] } ) {
+        return 1 if $_;
     }
     '';
 }
@@ -307,23 +449,41 @@ sub _anagramize {
 sub _all_touched {
     my ( $counts, $words ) = @_;
 
-    my ( $first_index, $c );
+    my $c;
+
+    my ( @tallies, @good_indices );
+    for (@$words) {
+        my $wc = $_->[1];
+        for (@indices) {
+            next unless $c = $counts->[$_];
+            $good_indices[$_] //= $_;
+            $tallies[$_]++ if $wc->[$_] < $c;
+        }
+    }
 
     # if any letter count didn't change, there's no hope
-  OUTER: for my $i (@indices) {
-        next unless $c = $counts->[$i];
-        $first_index //= $i;
-        for (@$words) {
-            next OUTER if $_->[1][$i] < $c;
+    return unless @good_indices;
+    for (@good_indices) {
+        next   unless $_;
+        return unless $tallies[$_];
+    }
+
+    # find the letter with the fewest possibilities
+    my ( $best, $min, $n );
+    for (@good_indices) {
+        next unless $_;
+        $n = $tallies[$_];
+        if ( !$best || $n < $min ) {
+            $best = $_;
+            $min  = $n;
         }
-        return;
     }
 
     # we only need consider all the branches which affected a
     # particular letter; we will find all possibilities in their
     # ramifications
-    $c = $counts->[$first_index];
-    @$words = grep { $_->[1][$first_index] < $c } @$words;
+    $c = $counts->[$best];
+    @$words = grep { $_->[1][$best] < $c } @$words;
     return 1;
 }
 
@@ -341,7 +501,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.012
+version 0.013
 
 =head1 SYNOPSIS
 
@@ -469,6 +629,38 @@ which provides the default.
 
 The minimum number of anagrams to look for. This value is only consulted if the anagram engine
 has more than one word list. This overrides any value from the constructor parameter C<min>.
+
+=back
+
+=head2 $self->iterator($phrase, %opts)
+
+Generators a code reference once can use to iterate over all the anagrams
+of a phrase. This iterator will be considerably slower than the C<anagrams> method
+if you want to fetch all the anagrams of a phrase but considerably faster if your
+phrase is large and you just want a sample of anagrams. And if your phrase is
+sufficiently large that there is not sufficient memory and/or time to create the
+complete anagram list, an iterator is your only option. Iterators are much more
+memory efficient.
+
+If the anagram engine holds multiple word lists, longer lists are sorted only as
+necessary.
+
+As with the other methods, the optional C<%opts> may be provided as either a list
+of key-value pairs or as a hash reference. The understood options are
+
+=over 4
+
+=item sorted
+
+If true, anagrams will be internally sorted, though not necessarily relative to each
+other. In fact, because of how anagrams are gathered, they will tend to be returned
+in sorted order unless the C<random> parameter is set to true.
+
+=item random
+
+If true, the anagrams are returned in relatively random order. The order is only
+relatively random because it will still be the case that longer word lists are only
+consulted as a last resort.
 
 =back
 
