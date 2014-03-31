@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.013';
+$Lingua::Anagrams::VERSION = '0.014';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -227,9 +227,6 @@ sub _super_iterator {
     my @j      = _jumps($counts);
     my @ix     = _indices($counts);
     my $wc     = {};
-    local @indices    = @ix;
-    local @jumps      = @j;
-    local $word_cache = $wc;
     my $i = _iterator( $tries, $counts, $opts );
     my ( %reverse_cache, %c );
     return sub {
@@ -263,12 +260,9 @@ sub _iterator {
     my $total = 0;
     $total += $_ for @$counts[@indices];
     my @t = @$tries;
-    my ( $i, $next, $initialized );
+    my $i;
     my $s = sub {
-        my $rv = $next;
-        undef $next;
-        return $rv if $initialized && !$rv;
-        $initialized //= 1;
+        my $rv;
         {
             unless ($i) {
                 if (@t) {
@@ -283,15 +277,14 @@ sub _iterator {
                     return $rv;
                 }
             }
-            $next = $i->();
-            unless ($next) {
+            $rv = $i->();
+            unless ($rv) {
                 undef $i;
                 redo;
             }
         }
         $rv;
     };
-    $s->();    # initialize
     $s;
 }
 
@@ -501,7 +494,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.013
+version 0.014
 
 =head1 SYNOPSIS
 
