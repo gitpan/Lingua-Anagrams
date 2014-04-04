@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.015';
+$Lingua::Anagrams::VERSION = '0.016';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -507,7 +507,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.015
+version 0.016
 
 =head1 SYNOPSIS
 
@@ -540,7 +540,8 @@ version 0.015
   say 'it took ' . ( $t2 - $t1 ) . ' seconds';
   
   say "\nnow for a random sample\n";
-  say join ' ', @{ $anagramizer->iterator( 'Ada Hyacinth Melton-Houghton', random => 1 ) };
+  my $i = $anagramizer->iterator( 'Ada Hyacinth Melton-Houghton', random => 1 );
+  say join ' ', @{ $i->() };
 
 Giving you
 
