@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.014';
+$Lingua::Anagrams::VERSION = '0.015';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -145,7 +145,6 @@ sub anagrams {
     my $self   = shift;
     my $phrase = shift;
     my %opts   = _make_opts(@_);
-    my $tries  = $self->{tries};
     local ( $limit, $cleaner ) = @$self{qw(limit clean)};
     $cleaner->($phrase);
     return () unless length $phrase;
@@ -163,12 +162,19 @@ sub anagrams {
     else {
         $min = $self->{min};
     }
+    my $i = $opts{start_list} // 0;
+    my @pairs = @{ $self->{tries} };
+    if ($i) {
+        die "impossible index for start list: $i" unless defined $pairs[$i];
+        $i = @pairs + $i if $i < 0;
+        @pairs = @pairs[ $i .. $#pairs ];
+    }
     my $counts = _counts($phrase);
     local @jumps   = _jumps($counts);
     local @indices = _indices($counts);
     my @anagrams;
     local $word_cache = {};
-    for my $pair (@$tries) {
+    for my $pair (@pairs) {
         local ( $trie, $known ) = @$pair;
         next unless _all_known($counts);
         local %cache = ();
@@ -215,9 +221,16 @@ sub iterator {
     my %opts   = _make_opts(@_);
     $opts{sorted} //= $self->{sorted};
     $self->{clean}->($phrase);
+    my $i = $opts{start_list} // 0;
+    my @pairs = @{ $self->{tries} };
+    if ($i) {
+        die "impossible index for start list: $i" unless defined $pairs[$i];
+        $i = @pairs + $i if $i < 0;
+        @pairs = @pairs[ $i .. $#pairs ];
+    }
     return sub { }
       unless length $phrase;
-    return _super_iterator( $self->{tries}, $phrase, \%opts );
+    return _super_iterator( \@pairs, $phrase, \%opts );
 }
 
 # iterator that converts word indices back to words
@@ -227,7 +240,7 @@ sub _super_iterator {
     my @j      = _jumps($counts);
     my @ix     = _indices($counts);
     my $wc     = {};
-    my $i = _iterator( $tries, $counts, $opts );
+    my $i      = _iterator( $tries, $counts, $opts );
     my ( %reverse_cache, %c );
     return sub {
         my $rv;
@@ -494,7 +507,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.014
+version 0.015
 
 =head1 SYNOPSIS
 
@@ -525,6 +538,9 @@ version 0.014
   say '';
   say scalar(@anagrams) . ' anagrams';
   say 'it took ' . ( $t2 - $t1 ) . ' seconds';
+  
+  say "\nnow for a random sample\n";
+  say join ' ', @{ $anagramizer->iterator( 'Ada Hyacinth Melton-Houghton', random => 1 ) };
 
 Giving you
 
@@ -537,7 +553,11 @@ Giving you
   moolah thatch toeing unhandy
   
   1582 anagrams
-  it took 229 seconds
+  it took 129 seconds
+  
+  now for a random sample
+  
+  noumenal acanthi doth thy hog
 
 =head1 DESCRIPTION
 
@@ -623,6 +643,12 @@ which provides the default.
 The minimum number of anagrams to look for. This value is only consulted if the anagram engine
 has more than one word list. This overrides any value from the constructor parameter C<min>.
 
+=item start_list
+
+Index of first word list to try. This will be 0 by default. Set it to -1 to use only the
+largest word list. The bigger the word list you start with, the smaller the words you are likely
+to get in any particular anagram but also the faster you will fail when no anagrams are possible.
+
 =back
 
 =head2 $self->iterator($phrase, %opts)
@@ -654,6 +680,12 @@ in sorted order unless the C<random> parameter is set to true.
 If true, the anagrams are returned in relatively random order. The order is only
 relatively random because it will still be the case that longer word lists are only
 consulted as a last resort.
+
+=item start_list
+
+Index of first word list to try. This will be 0 by default. This is the same option as with
+the C<anagrams> method. It is particularly useful in conjunction with the C<random> option. It
+will speed up both success and failure.
 
 =back
 
