@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.016';
+$Lingua::Anagrams::VERSION = '0.017';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -215,6 +215,8 @@ sub _make_opts {
 }
 
 
+our $null = sub { };
+
 sub iterator {
     my $self   = shift;
     my $phrase = shift;
@@ -228,8 +230,7 @@ sub iterator {
         $i = @pairs + $i if $i < 0;
         @pairs = @pairs[ $i .. $#pairs ];
     }
-    return sub { }
-      unless length $phrase;
+    return $null unless length $phrase;
     return _super_iterator( \@pairs, $phrase, \%opts );
 }
 
@@ -401,15 +402,41 @@ sub _all_known {
     return 1;
 }
 
+
+sub key {
+    my ( $self, $phrase ) = @_;
+    $self->{clean}->($phrase);
+    my ( @counts, $lowest );
+    for my $c ( map ord, split //, $phrase ) {
+        if ( defined $lowest ) {
+            $lowest = $c if $c < $lowest;
+        }
+        else {
+            $lowest = $c;
+        }
+        $counts[$c]++;
+    }
+    @counts = @counts[ $lowest .. $#counts ];
+    $_ //= '' for @counts;
+    my $suffix = join '.', @counts;
+    $suffix =~ s/\.(\.+)\./'('.length($1).')'/ge;
+    return "$lowest:$suffix";
+}
+
+
+sub lists {
+    my $self = shift;
+    return scalar @{ $self->{tries} };
+}
+
 sub _counts {
     my $phrase = shift;
-    $phrase =~ s/\s//g;
     my @counts;
     for my $c ( map ord, split //, $phrase ) {
         $counts[$c]++;
     }
     $_ //= 0 for @counts;
-    return \@counts;
+    \@counts;
 }
 
 sub _any {
@@ -507,7 +534,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.016
+version 0.017
 
 =head1 SYNOPSIS
 
@@ -572,10 +599,12 @@ of it. It isn't the prettiest.
 
 =head1 METHODS
 
-=head2 CLASS->new( $word_list, %params )
+=head2 new
+
+  CLASS->new( $word_list, %params )
 
 Construct a new anagram engine from a word list, or a list of word lists. If you provide multiple
-word lists, each successive list will be understood as an augmentation of those preceding it.
+word lists, each successive list will be understood as an augmentation of those preceding it.*
 If you search for the anagrams of a phrase, the algorithm will abandon one list and try the
 next if it is unable to find sufficient anagrams with the current list. You can use cascading
 word lists like this to find interesting anagrams of long phrases as well as short ones in
@@ -623,7 +652,13 @@ applied. If no minimum is provided the effective minimum is one.
 
 =back
 
-=head2 $self->anagrams( $phrase, %opts )
+* If you provide multiple word lists, note that later lists will be discarded if they do not actually
+augment what came before. Thus the number of lists that anagramizer considers you to be using may
+be different from the number you think you are using. See C<lists>.
+
+=head2 anagrams
+
+  $self->anagrams( $phrase, %opts )
 
 Returns a list of array references, each reference containing a list of
 words which together constitute an anagram of the phrase.
@@ -652,9 +687,11 @@ to get in any particular anagram but also the faster you will fail when no anagr
 
 =back
 
-=head2 $self->iterator($phrase, %opts)
+=head2 iterator
 
-Generators a code reference once can use to iterate over all the anagrams
+  $self->iterator( $phrase, %opts )
+
+Generates a code reference one can use to iterate over all the anagrams
 of a phrase. This iterator will be considerably slower than the C<anagrams> method
 if you want to fetch all the anagrams of a phrase but considerably faster if your
 phrase is large and you just want a sample of anagrams. And if your phrase is
@@ -662,7 +699,7 @@ sufficiently large that there is not sufficient memory and/or time to create the
 complete anagram list, an iterator is your only option. Iterators are much more
 memory efficient.
 
-If the anagram engine holds multiple word lists, longer lists are sorted only as
+If the anagram engine holds multiple word lists, longer lists are consulted only as
 necessary.
 
 As with the other methods, the optional C<%opts> may be provided as either a list
@@ -682,6 +719,10 @@ If true, the anagrams are returned in relatively random order. The order is only
 relatively random because it will still be the case that longer word lists are only
 consulted as a last resort.
 
+Note that random iterators, though only slightly slower than non-random iterators, will
+come to use considerably more memory. This is because they will come to be holding many
+incompletely used sub-iterators.
+
 =item start_list
 
 Index of first word list to try. This will be 0 by default. This is the same option as with
@@ -689,6 +730,25 @@ the C<anagrams> method. It is particularly useful in conjunction with the C<rand
 will speed up both success and failure.
 
 =back
+
+=head2 key
+
+  $self->key($phrase)
+
+Converts a phrase into a key suitable for use in caching anagram lists.
+
+  say $ag->key('box');   # 98:1(11)1(7)1
+  say $ag->key('book');  # 98:1(7)1(2)2
+  say $ag->key('bag');   # 97:1.1(3)1
+  say $ag->key('gab');   # 97:1.1(3)1
+
+A key is just a compressed representation of the character counts in the phrase.
+
+=head2 lists
+
+  $self->lists
+
+Returns the number of word lists being used by the anagramizer.
 
 =head1 SOME CLEVER BITS
 

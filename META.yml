@@ -6,6 +6,7 @@ build_requires:
   File::Spec: '0'
   IO::Handle: '0'
   IPC::Open3: '0'
+  Test::Deep: '0'
   Test::Exception: '0'
   Test::More: '0.88'
   perl: '5.010'
@@ -24,4 +25,4 @@ requires:
   perl: '5.010'
   strict: '0'
   warnings: '0'
-version: '0.016'
+version: '0.017'
