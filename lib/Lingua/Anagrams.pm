@@ -1,5 +1,5 @@
 package Lingua::Anagrams;
-$Lingua::Anagrams::VERSION = '0.017';
+$Lingua::Anagrams::VERSION = '0.018';
 # ABSTRACT: pure Perl anagram finder
 
 use strict;
@@ -13,7 +13,7 @@ our $LIMIT = 20;
 
 # some global variables to be localized
 # used to limit time spent copying values
-our ( $limit, $known, $trie, %cache, $cleaner, @jumps, $word_cache, @indices );
+our ( $limit, $known, $trie, %cache, $cleaner, @jumps, @indices );
 
 
 sub new {
@@ -31,39 +31,69 @@ sub new {
     else {
         @word_lists = ($wl);
     }
-    my ( @tries, @all_words );
+    _validate_lists( \@word_lists );
+    my $translator = { '' => 0 };
+    $translator->{$_} = scalar keys %$translator for @{ $word_lists[-1] };
+    my $offset;    # used to reduce number of undef cells in tries and elsewhere
+    for my $w ( @{ $word_lists[-1] } ) {
+        my @ords = map ord, split //, $w;
+        for my $o (@ords) {
+            if ( defined $offset ) {
+                $offset = $o if $o < $offset;
+            }
+            else {
+                $offset = $o;
+            }
+        }
+    }
+    --$offset;
+    my @tries;
     for my $words (@word_lists) {
-        next unless @$words;
-        die 'items in lists expected to be words' if ref $words->[0];
-        $cleaner->($_) for @$words;
-        my $s1 = @all_words;
-        push @all_words, @$words;
-        @all_words = uniq @all_words;
-        next unless @all_words > $s1;
-        my ( $trie, $known ) = _trieify( \@all_words );
+        my ( $trie, $known ) = _trieify( $words, $translator, $offset );
         push @tries, [ $trie, $known ];
     }
-    die 'no words' unless @tries;
+    $translator = [ '', @{ $word_lists[-1] } ];
     return bless {
         limit  => $params{limit}  // $LIMIT,
         sorted => $params{sorted} // 0,
         min    => $params{min},
         clean  => $cleaner,
         tries  => \@tries,
+        translator => $translator,
+        offset     => $offset,
       },
       $class;
 }
 
+# there should be no empty lists and each list should be subsumed
+# by the next
+sub _validate_lists {
+    my $lists = shift;
+    for my $i ( 0 .. $#$lists ) {
+        my @list = uniq grep length,
+          map { my $v = $_ // ''; $cleaner->($v); $v } @{ $lists->[$i] };
+        die 'empty list' unless @list;
+        $lists->[$i] = \@list;
+    }
+    for my $i ( 1 .. $#$lists ) {
+        my ( $prior, $list ) = @$lists[ $i - 1, $i ];
+        die 'lists misordered by length' if @$prior >= @$list;
+        my %set = map { $_ => 1 } @$list;
+        for my $word (@$prior) {
+            die 'smaller lists must be subsumed by larger' unless $set{$word};
+        }
+    }
+}
+
 sub _trieify {
-    my $words = shift;
-    my $base  = [];
+    my ( $words, $translator, $offset ) = @_;
+    my $base = [];
     my @known;
-    my $terminal = [];
     for my $word (@$words) {
         next unless length( $word // '' );
-        my @chars = map ord, split //, $word;
+        my @chars = map { ord($_) - $offset } split //, $word;
         _learn( \@known, \@chars );
-        _add( $base, \@chars, $terminal );
+        _add( $base, \@chars, $word, $translator );
     }
     return $base, \@known;
 }
@@ -76,14 +106,14 @@ sub _learn {
 }
 
 sub _add {
-    my ( $base, $chars, $terminal ) = @_;
+    my ( $base, $chars, $word, $translator ) = @_;
     my $i = shift @$chars;
     if ($i) {
         my $next = $base->[$i] //= [];
-        _add( $next, $chars, $terminal );
+        _add( $next, $chars, $word, $translator );
     }
-    else {
-        $base->[0] //= $terminal;
+    else {    # store values in trie at the zero index
+        $base->[0] = $translator->{$word};
     }
 }
 
@@ -116,10 +146,7 @@ sub _words_in {
                     }
                 }
                 else {       # terminal
-                    my $w = join '',
-                      map { chr( $_->[0] ) } @stack[ 0 .. $#stack - 1 ];
-                    $w = $word_cache->{$w} //= scalar keys %$word_cache;
-                    push @words, [ $w, [@$counts] ];
+                    push @words, [ $l, [@$counts] ];
                     if ($total) {
                         $stack[-1][0] = $jumps[$c];
                     }
@@ -132,7 +159,7 @@ sub _words_in {
                     }
                 }
             }
-            else {
+            else {    # try the next possible character
                 $stack[-1][0] = $jumps[$c];
             }
         }
@@ -169,25 +196,22 @@ sub anagrams {
         $i = @pairs + $i if $i < 0;
         @pairs = @pairs[ $i .. $#pairs ];
     }
-    my $counts = _counts($phrase);
+    my $offset     = $self->{offset};
+    my $counts     = _counts( $phrase, $offset );
+    my @translator = @{ $self->{translator} };
     local @jumps   = _jumps($counts);
     local @indices = _indices($counts);
     my @anagrams;
-    local $word_cache = {};
     for my $pair (@pairs) {
         local ( $trie, $known ) = @$pair;
         next unless _all_known($counts);
         local %cache = ();
-        %$word_cache = ();
-        @anagrams    = _anagramize($counts);
+        @anagrams = _anagramize($counts);
         next unless @anagrams;
         next if $min and @anagrams < $min;
         last;
     }
-    my %r = reverse %$word_cache;
-    @anagrams = map {
-        [ map { $r{$_} } @$_ ]
-    } @anagrams;
+    @anagrams = map { [ @translator[@$_] ] } @anagrams;
     if ($sort) {
         @anagrams = sort {
             my $ordered = @$a <= @$b ? 1 : -1;
@@ -231,36 +255,29 @@ sub iterator {
         @pairs = @pairs[ $i .. $#pairs ];
     }
     return $null unless length $phrase;
-    return _super_iterator( \@pairs, $phrase, \%opts );
+    return _super_iterator( \@pairs, $phrase, \%opts,
+        @$self{qw(translator offset)} );
 }
 
 # iterator that converts word indices back to words
 sub _super_iterator {
-    my ( $tries, $phrase, $opts ) = @_;
-    my $counts = _counts($phrase);
+    my ( $tries, $phrase, $opts, $translator, $offset ) = @_;
+    my $counts = _counts( $phrase, $offset );
     my @j      = _jumps($counts);
     my @ix     = _indices($counts);
-    my $wc     = {};
     my $i      = _iterator( $tries, $counts, $opts );
-    my ( %reverse_cache, %c );
+    my %c;
     return sub {
         my $rv;
-        local @jumps      = @j;
-        local @indices    = @ix;
-        local $word_cache = $wc;
+        local @jumps   = @j;
+        local @indices = @ix;
         {
             $rv = $i->();
             return unless $rv;
             my $key = join ',', sort { $a <=> $b } @$rv;
             redo if $c{$key}++;
         }
-        for my $j (@$rv) {
-            if ( !$reverse_cache{$j} ) {
-                %reverse_cache = reverse %$word_cache;
-                last;
-            }
-        }
-        $rv = [ map { $reverse_cache{$_} } @$rv ];
+        $rv = [ @$translator[@$rv] ];
         if ( $opts->{sorted} ) {
             $rv = [ sort @$rv ];
         }
@@ -406,8 +423,9 @@ sub _all_known {
 sub key {
     my ( $self, $phrase ) = @_;
     $self->{clean}->($phrase);
+    my $offset = $self->{offset};
     my ( @counts, $lowest );
-    for my $c ( map ord, split //, $phrase ) {
+    for my $c ( map { ord($_) - $offset } split //, $phrase ) {
         if ( defined $lowest ) {
             $lowest = $c if $c < $lowest;
         }
@@ -430,9 +448,9 @@ sub lists {
 }
 
 sub _counts {
-    my $phrase = shift;
+    my ( $phrase, $offset ) = @_;
     my @counts;
-    for my $c ( map ord, split //, $phrase ) {
+    for my $c ( map { ord($_) - $offset } split //, $phrase ) {
         $counts[$c]++;
     }
     $_ //= 0 for @counts;
@@ -534,7 +552,7 @@ Lingua::Anagrams - pure Perl anagram finder
 
 =head1 VERSION
 
-version 0.017
+version 0.018
 
 =head1 SYNOPSIS
 
@@ -755,11 +773,6 @@ Returns the number of word lists being used by the anagramizer.
 One trick I use to speed things up is to convert all characters to integers
 immediately. If you're using integers, you can treat arrays are really fast
 hashes.
-
-Another is, in the trie, to build the trie only of arrays. The character
-identity is encoded in the array position, the distance from the start by depth.
-So the trie contains nothing but arrays. For a little memory efficiency the
-terminal symbols is always the same empty array.
 
 The natural way to walk the trie is with recursion, but I use a stack and a loop
 to speed things up.
